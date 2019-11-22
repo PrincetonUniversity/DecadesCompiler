@@ -1,0 +1,17 @@
+target datalayout = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"
+
+define i32 @"DECADES_FetchAdd"(i32* noalias nocapture %retptr, { i8*, i32 }** noalias nocapture %excinfo, i8* %arg.addr.0, i8* %arg.addr.1, i64 %arg.addr.2, i64 %arg.addr.3, i32* %arg.addr.4, i64 %arg.addr.5.0, i64 %arg.addr.6.0) {
+entry:
+
+  %prev = atomicrmw add i32* %arg.addr.4, i32 1 monotonic
+  store i32 %prev, i32* %retptr
+  ret i32 0
+}
+
+define i32 @"DECADES_AtomicAdd"(i32* noalias nocapture %retptr, { i8*, i32 }** noalias nocapture %excinfo, i8* %arg.addr.0, i8* %arg.addr.1, i64 %arg.addr.2, i64 %arg.addr.3, i32* %addr, i64 %arg.addr.5.0, i64 %arg.addr.6.0, i32 %val) {
+entry:
+
+  %prev = atomicrmw add i32* %addr, i32 %val monotonic
+  store i32 %prev, i32* %retptr
+  ret i32 0
+}

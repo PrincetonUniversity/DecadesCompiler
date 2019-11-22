@@ -1,0 +1,317 @@
+#!/usr/bin/env python3
+
+import os
+import pdb
+import sys
+import random
+from time import time
+import re
+from tabulate import tabulate
+import shutil
+
+# all names will be normalized. Lower case with no '_' characters
+# hacky but the best we can do for some kind of specification
+# (ops, time, iterations)
+# dec_addition_rnn: 45000 inputs and 1 epoch
+# dec_mnist_cnn: 60000 inputs and 1 epoch
+# dec_mnist_mlp: 60000 inputs and 1 epoch
+# convnet: 10000 inputs and 5 epochs
+# recsys: 69632 inputs and 1 epoch
+# graphsage: 548608 inputs and 3 epochs
+BASELINE_LUT = {"dec_addition_rnn" : (93701.0, 2.0416e-05, 45000),
+                "dec_mnist_cnn" : (7824799664.0, 1.96447181702, 60000),
+                "dec_mnist_mlp" : (873785.0, 0.00000084/2, 60000),
+                "convnet" : (10836256, 57.03, 50000),
+                "recsys" : (428867219776, 510.49, 69632),
+                "graphsage" : (817734094963, 180.06, 1645824)}
+
+BASE_LINE_TPD_WATTS = 165.0
+GLOBAL_GOPs = None
+
+PYTHON = None
+
+BIG_PRINT = False
+
+stats = [("cycles", "intt"), ("global_energy", "floatt"), ("global_avg_power", "floatt")]
+
+GLOBAL_TUP = None
+
+def find_python():
+    global PYTHON
+    home = os.environ["HOME"]
+    if home == "/root":
+        PYTHON = "python3.7m"
+    else:
+        PYTHON = "python"
+
+find_python()
+
+if "DECADES_VERBOSE" in os.environ:
+    if int(os.environ["DECADES_VERBOSE"]) is 1:
+        BIG_PRINT = True
+
+random.seed(time())
+
+def create_fresh_dir(s):
+    if os.path.isdir(s):
+        shutil.rmtree(s)
+    os.mkdir(s)
+
+
+def cache_cmd(cmd):
+    cached_dir = os.path.join(os.path.abspath(os.path.dirname(sys.argv[0])), "../cached_cmds")
+    my_rand = str(random.randint(0,1024))
+    fname = os.path.join(cached_dir, my_rand + "_cmd_out.txt")
+    fh = open(fname, 'w')
+    fh.write(cmd)
+    fh.close()
+    cd = os.path.join(cached_dir, my_rand + "_out")
+    create_fresh_dir(cd)
+    shutil.copyfile(sys.argv[1], os.path.join(cd,"out.py"))
+        
+
+def set_cmd_test_chip():
+    os.environ["DECADES_CONFIG"] = "TEST_CHIP"
+
+def set_cmd_future_chip():
+    os.environ["DECADES_CONFIG"] = "FUTURE_CHIP"
+
+def run_app():
+    args = sys.argv[1:]
+    py = PYTHON
+    cmd = [py] + args
+    print("[DECADES] Run python app")
+    cmd_line = " ".join(cmd)
+    print(cmd_line)
+    os.system(cmd_line)
+    
+def run_compiler():
+    arg = sys.argv[1].replace(".py",".cpp")
+    decpp = ["PDEC++ -a 1"]
+    cmd = decpp + [arg]
+    cmd_line = " ".join(cmd)
+    os.system(cmd_line)
+
+def run_pythia(flags):
+    print("\nrunning simulator\n")
+    cmd = ["./decades_base/decades_base"]
+    cmd_line = " ".join(cmd)
+    print(cmd_line)
+    os.system(cmd_line)
+    cmd = ["pythiarun", "-n 1", flags, "."]
+    cmd_out = [">", "preset_out.txt"]
+    cmd_out_err = ["2>", "preset_out_err.txt"]
+    cmd_line = " ".join(cmd + cmd_out + cmd_out_err)
+    print(cmd_line)
+    os.system(cmd_line)
+
+def get_metric(s, data):
+    
+    all_metrics = re.findall("^" + s[0] + " : .*$", data, re.MULTILINE)
+    ret = None
+    if s[1] == "intt":        
+        ret = int(all_metrics[-1].split(' ')[2])
+    elif s[1] == "floatt":
+        ret = float(all_metrics[-1].split(' ')[2])
+    return ret
+
+def get_gops(s):
+    if GLOBAL_GOPs is None:
+        return "NA"
+    return GLOBAL_GOPs / float(s[2])
+    
+def read_pythia(chip):
+    ret = [chip]
+
+    fh = open("preset_out.txt")
+    data = fh.read()
+    fh.close()
+    for m in stats:        
+        ret.append(get_metric(m, data))
+
+    GOPS = get_gops(ret)
+    ret.append(GOPS)
+    
+    # scale simulator results on one training epoch on
+    # one image to the whole training
+    ret = scale_metrics(ret)
+
+    return ret
+
+def scale_metrics(metrics):
+
+    # read batch size from file
+    app = sys.argv[1].replace(".py","").lower()
+    if os.path.isfile(app + "_batchsize.txt"):
+        f_bs = open(app + "_batchsize.txt")
+        batch_size = f_bs.read()
+        print("[INFO] The batch size is " + batch_size + "\n")
+        f_bs.close()
+    else:
+        batch_size = 1
+
+    # read baseline # of ops
+    if GLOBAL_TUP != None:
+
+        tup = GLOBAL_TUP
+        scaling_factor = tup[2] / int(batch_size)
+    
+        # scale simulator results
+        # cycles
+        metrics[1] = metrics[1] * scaling_factor
+        # energy
+        metrics[2] = metrics[2] * scaling_factor
+        # GOPs/W
+        metrics[4] = metrics[4] / scaling_factor
+
+    return metrics
+
+def print_metrics(metrics):
+
+    if GLOBAL_TUP != None:
+        ops = str(GLOBAL_TUP[0])
+    else:
+        ops = "NA"
+
+    print("  " + metrics[0])
+    print("  Ops:               " + ops)
+    print("  Time (seconds):    " + str(metrics[1]*2e-10))
+    print("  Energy (Joules):   " + str(metrics[2]))
+    print("  Avg power (Watts): " + str(metrics[3]))
+    print("  GOPs/W:            " + str(metrics[4]) + "\n")
+
+def input_matches(tup, inputt):
+    for t in tup:
+        if t not in inputt:
+            return False
+
+    return True
+
+def find_baseline_tup():
+
+    # search name of input file in baseline LUT
+    app = sys.argv[1].replace(".py","").lower()    
+
+    key = None
+    for k in BASELINE_LUT:
+        if k in app:
+            key = app
+            break
+
+    # search app name inserted from console in baseline LUT
+    if key is None:
+        print("Please insert the name of the application: ", end='')
+        app = input()
+        for k in BASELINE_LUT:
+            if k in app:
+                key = app
+                break
+
+        if key is None:
+            print("[WARNING] Unable to find the corresponding baseline application")
+            return None
+        else:
+            print("[INFO] Baseline application found!")
+
+    return BASELINE_LUT[k]
+        
+
+def get_baseline():
+    global GLOBAL_GOPs
+    global GLOBAL_TUP
+    tup = find_baseline_tup()
+    GLOBAL_TUP = tup
+    if tup is None:
+        return ["baseline", "NA", "NA", "NA", "NA"]
+    GLOBAL_GOPs = tup[0]/float(10e9)
+    GOPsW = GLOBAL_GOPs/(float(BASE_LINE_TPD_WATTS)*tup[1])
+    return ["baseline", tup[0], float(BASE_LINE_TPD_WATTS) * tup[1],
+            str(BASE_LINE_TPD_WATTS), GOPsW]
+
+# TODO
+# - Right now the python file passed as argument to this script must
+#   match the app names in the BASELINE_LUT array above. Relax this.
+def main():
+
+    #cache the command so we can see what was run
+    cmd = " ".join(sys.argv)
+    cache_cmd(cmd) # copy the python file
+
+    multiplier = 1
+    if len(sys.argv) == 3:
+        multiplier = int(sys.argv[2])
+
+    #try and get an baseline
+    baseline_metrics = get_baseline()
+
+    set_cmd_future_chip()
+    # run Python app to dump TF traces 
+    #run_app()
+    # run DEC++
+    #run_compiler()
+    # run pythia and record output
+    #run_pythia("-sc sim_big")    
+    future_metrics = read_pythia("decades framework")
+
+    '''
+    print("")
+    print("Multiplying simulated results by: " + str(multiplier))
+    print("")
+    for i in [1,2]:
+        future_metrics[i] = future_metrics[i] * multiplier
+    for i in [4]:
+        future_metrics[i] = future_metrics[i] / multiplier
+    '''
+
+    print("Baseline Metrics:")
+    print_metrics(baseline_metrics)
+    print("Future Metrics:")
+    print_metrics(future_metrics)
+
+    def compare_metrics(m1, m2):
+        ret = [m2[0]]
+        for i in range(1,len(m1)):
+            if m1[i] == "NA" or m2[i] == "NA":
+                ret.append("NA")
+            else:
+                ret.append((m2[i]/m1[i]))
+        return ret
+
+    if BIG_PRINT: # Because the evaluation isn't asking for these metrics. But still useful to keep around
+        print("\n\n")
+        print("raw results")
+        print("-----")
+        print(tabulate([baseline_metrics, future_metrics],headers= ["chip"] + [m[0] for m in stats] + ["GOPS/Watt"], colalign=["left", "right", "right", "right", "right"]))
+        print("")
+        
+        print("DECADES improves over the baseline by:")
+        print("-----")
+        future_compare = compare_metrics(baseline_metrics, future_metrics)
+        
+        print(tabulate([future_compare],headers= ["chip"] + [m[0] for m in stats] + ["GOPS/Watt"], colalign=["left", "right", "right", "right", "right"]))    
+        print("")
+        
+
+    else:
+        print("\n\n")
+        print("raw results")
+        print("-----")
+        def only_last_result(s):
+            return [s[0], s[-1]]
+
+        baseline_metrics = only_last_result(baseline_metrics)
+        future_metrics = only_last_result(future_metrics)
+        print(tabulate([baseline_metrics, future_metrics],headers=["chip", "GOPS/Watt"], colalign=["left", "right"]))
+        print("")
+        
+        future_compare = compare_metrics(baseline_metrics, future_metrics)
+        print("DECADES framework improves over the baseline by:")
+        value = future_compare[1]
+        if value != "NA":
+            value = ("%.3f" % value) + "x"
+        print(tabulate([[future_compare[0], value]],headers= ["chip", "GOPS/Watt"], colalign=["left", "right"]))    
+        print("")
+        
+
+if __name__ == "__main__":
+    main()

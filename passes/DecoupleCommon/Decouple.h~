@@ -1,0 +1,4 @@
+#define KERNEL_STR "_kernel_"
+#define MAIN_STR "main"
+#define COMPUTE_FLAG 1
+#define SUPPLY_FLAG 0

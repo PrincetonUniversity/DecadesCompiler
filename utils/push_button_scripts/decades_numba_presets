@@ -1,0 +1,262 @@
+#!/opt/anaconda/anaconda3/bin/python
+
+# For Cafe
+# #!/usr/bin/env python3.6
+
+import os
+import pdb
+import sys
+import random
+from time import time
+import re
+from tabulate import tabulate
+import shutil
+
+# first number is # operations
+# second number is execution time
+
+# all names will be normalized. Lower case with no '_' characters
+# hacky but the best we can do for some kind of specification
+#BASELINE_LUT = {"graphprojection" : [
+#    (["brunson","xtoy"], 93701.0, 2.0416e-05),
+#    (["youtube","xtoy"], 7339841492.0,  1.7779),
+#    (["youtube","ytox"], 135046989997,  30.4588),
+#    (["dbpedia","xtoy"], 262690755.0 ,  0.0580449),
+#    (["dbpedia","ytox"], 2368755971.0,  0.510192)],
+#                "vertexnomination" : [
+#    (["enron"], 7824799664.0, 1.96447181702)],
+#                "matmul" : [
+#                    #not how long it actually takes, but need good illustrative numbers
+#    (["thirtytwo"], 873785.0, 0.00000084/2)],
+#                "reduction" : [
+#    (["twofiftysix"], 2843.0, (.0003 * 10e-5)/2.0)]
+#}
+
+#not how long it actually takes on matmul or reduction, but need good illustrative numbers
+
+#ipnsw: 0.003574673 gops, 11.56 sec
+#lgc: 0.010979530 gops, 40.59 sec
+#sinkhorn: 0.001867098 gops, 47.21 sec
+BASELINE_LUT = {"matmul" : ("", 873785.0, 0.00000084/2),
+                "reduction" : ("", 2843.0, (.0003 * 10e-5)/2.0),
+                "ipnsw" : ("",0.003574673*10e9,11.56),
+                "lgc": ("",0.010979530*10e9,40.59),
+                "sinkhorn": ("",0.001867098*10e9,47.21)}
+
+BASE_LINE_TPD_WATTS = 165.0
+GLOBAL_GOPs = None
+
+PYTHON = None
+
+BIG_PRINT = False
+
+stats = [("cycles", "intt"), ("global_energy", "floatt"), ("global_avg_power", "floatt")]
+
+def find_python():
+    global PYTHON
+    home = os.environ["HOME"]
+    if home == "/root":
+        PYTHON = "python3.7m"
+    else:
+        PYTHON = "python3.6m"
+
+find_python()
+
+if "DECADES_VERBOSE" in os.environ:
+    if int(os.environ["DECADES_VERBOSE"]) is 1:
+        BIG_PRINT = True
+
+random.seed(time())
+
+def create_fresh_dir(s):
+    if os.path.isdir(s):
+        shutil.rmtree(s)
+    os.mkdir(s)
+
+
+def cache_cmd(cmd):
+    cached_dir = os.path.join(os.path.abspath(os.path.dirname(sys.argv[0])), "../cached_cmds")
+    my_rand = str(random.randint(0,1024))
+    fname = os.path.join(cached_dir, my_rand + "_cmd_out.txt")
+    fh = open(fname, 'w')
+    fh.write(cmd)
+    fh.close()
+    cd = os.path.join(cached_dir, my_rand + "_out")
+    create_fresh_dir(cd)
+    shutil.copyfile(sys.argv[1], os.path.join(cd,"out.py"))
+        
+
+def set_cmd_test_chip():
+    os.environ["DECADES_CONFIG"] = "TEST_CHIP"
+
+def set_cmd_future_chip():
+    os.environ["DECADES_CONFIG"] = "FUTURE_CHIP"
+    
+def run_compiler():
+    args = [sys.argv[1]]
+    py = PYTHON
+    cmd = [py] + args
+    cmd_line = " ".join(cmd)
+    os.system(cmd_line)
+
+def run_pythia(d, flags):
+    print("\nrunning simulator\n")
+    files = os.listdir(d)
+    out_files = [int(f.split("_")[2]) for f in files if "output_compute" in f]
+    threads = max(out_files) + 1
+
+    cmd = ["pythiarun", "-n " + str(threads), flags, "."]
+    cmd_out = [">", "preset_out.txt"]
+    cmd_out_err = ["2>", "preset_out_err.txt"]
+    cmd_line = " ".join(cmd + cmd_out + cmd_out_err)
+    print(cmd_line)
+    os.system(cmd_line)
+
+def get_metric(s, data):
+    
+    all_metrics = re.findall("^" + s[0] + " : .*$", data, re.MULTILINE)
+    ret = None
+    if s[1] == "intt":        
+        ret = int(all_metrics[-1].split(' ')[2])
+    elif s[1] == "floatt":
+        ret = float(all_metrics[-1].split(' ')[2])
+    return ret
+
+def get_gops(s):
+    if GLOBAL_GOPs is None:
+        return "NA"
+    return GLOBAL_GOPs / float(s[2])
+    
+def read_pythia(chip):
+    ret = [chip]
+
+    fh = open("preset_out.txt")
+    data = fh.read()
+    fh.close()
+    for m in stats:        
+        ret.append(get_metric(m, data))
+
+    GOPS = get_gops(ret)
+    ret.append(GOPS)
+        
+    return ret
+
+def input_matches(tup, inputt):
+    for t in tup:
+        if t not in inputt:
+            return False
+
+    return True
+
+def find_baseline_tup():
+    app = sys.argv[1].replace("_",'').lower()    
+    key = None
+    for k in BASELINE_LUT:
+        if k in app:
+            key = app
+            break
+    if key is None:
+        print("WARNING: unable to find your baseline application")
+        return None
+
+    lists = BASELINE_LUT[k]
+    tup = lists
+
+    return tup
+        
+
+def get_baseline():
+    global GLOBAL_GOPs
+    tup = find_baseline_tup()
+    if tup is None:
+        return ["baseline", "NA", "NA", "NA", "NA"]
+    GLOBAL_GOPs = tup[1]/float(10e9)
+    GOPsW = GLOBAL_GOPs/(float(BASE_LINE_TPD_WATTS)*tup[2])
+    return ["baseline", "NA", "NA", "NA", GOPsW]
+            
+def main():
+
+    #cache the command so we can see what was run
+    cmd = " ".join(sys.argv)
+    cache_cmd(cmd) # copy the python file
+
+    multiplier = 1
+    if len(sys.argv) == 3:
+        multiplier = int(sys.argv[2])
+
+
+    #try and get a baseline
+    baseline_metrics = get_baseline()
+    
+    #set_cmd_test_chip()
+    # run DEC++
+    #run_compiler()
+    # run pythia and record output    
+    #run_pythia("decades_base", "-sc sim_small")
+    #test_metrics = read_pythia("test_decades")
+
+    set_cmd_future_chip()
+    # run DEC++
+    run_compiler()
+    # run pythia and record output
+    run_pythia("decades_base", "-sc sim_big")    
+    future_metrics = read_pythia("decades framework")
+
+    print("")
+    print("Multiplying simulated results by: " + str(multiplier))
+    print("")
+    for i in [1,2]:
+        future_metrics[i] = future_metrics[i] * multiplier
+
+    for i in [4]:
+        future_metrics[i] = future_metrics[i] / multiplier
+
+
+
+    def compare_metrics(m1, m2):
+        ret = [m2[0]]
+        for i in range(1,len(m1)):
+            if m1[i] == "NA" or m2[i] == "NA":
+                ret.append("NA")
+            else:
+                ret.append((m2[i]/m1[i]))
+        return ret
+
+    if BIG_PRINT: # Because the evalutation isn't asking for these metrics. But still useful to keep around
+        print("\n\n")
+        print("raw results")
+        print("-----")
+        print(tabulate([baseline_metrics, future_metrics],headers= ["chip"] + [m[0] for m in stats] + ["GOPS/Watt"], colalign=["left", "right", "right", "right", "right"]))
+        print("")
+        
+        print("DECADES improves over baseline by:")
+        print("-----")
+        future_compare = compare_metrics(baseline_metrics, future_metrics)
+        
+        print(tabulate([future_compare],headers= ["chip"] + [m[0] for m in stats] + ["GOPS/Watt"], colalign=["left", "right", "right", "right", "right"]))    
+        print("")
+        
+
+    else:
+        print("\n\n")
+        print("raw results")
+        print("-----")
+        def only_last_result(s):
+            return [s[0], s[-1]]
+
+        baseline_metrics = only_last_result(baseline_metrics)
+        future_metrics = only_last_result(future_metrics)
+        print(tabulate([baseline_metrics, future_metrics],headers=["chip", "GOPS/Watt"], colalign=["left", "right"]))
+        print("")
+        
+        future_compare = compare_metrics(baseline_metrics, future_metrics)
+        print("DECADES framework improves over baseline by:")
+        value = future_compare[1]
+        if value != "NA":
+            value = ("%.3f" % value) + "x"
+        print(tabulate([[future_compare[0], value]],headers= ["chip", "GOPS/Watt"], colalign=["left", "right"]))    
+        print("")
+        
+
+if __name__ == "__main__":
+    main()

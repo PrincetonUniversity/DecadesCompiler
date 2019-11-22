@@ -1,0 +1,23 @@
+#include <stdio.h>
+
+#define SIZE 256
+
+void __attribute__((noinline)) _kernel_(float *a, float *b, float *c) {
+  for (int i = 0; i < SIZE; i++) {
+    c[0] += a[i] + b[i];
+  }
+}
+
+int main() {
+  float a[SIZE], b[SIZE], c;
+
+  for (int i = 0; i < SIZE; i++) {
+    a[i] = b[i] = i;
+  }
+
+  _kernel_(a, b, &c);
+
+  printf("finished!\n");
+  printf("reference result: %f\n", c);
+  return 0;
+}
