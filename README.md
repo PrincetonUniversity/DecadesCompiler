@@ -19,13 +19,7 @@ sudo apt install cmake clang-11 libclang-11-dev
 will install all the needed packages. 
 
 
-DECADES's compiler is able to compile to riscv64
-binaries using the riscv gcc sysroot. To obtain the depedencies, 
-please go to in the scrpits_build_deps directory 
-and run build. This will perform a large install (~13 GB) and take several
-hours. It will build LLVM and riscv64 GCC and OpenMP from sources.
-
-Once you have successfully installed/acquired the right versions of CMake and LLVM, run the following:
+Once you have successfully installed/acquired the right versions of the dependecies, run the following:
 
 ```console
     mkdir build
@@ -37,7 +31,7 @@ Once you have successfully installed/acquired the right versions of CMake and LL
 Alternatively, we provide a docker image for this package. It can be obtained by running:
 
 ```console
-docker pull sn3332/decades:V0
+docker pull sn3332/decades
 ```
 
 
@@ -88,19 +82,6 @@ No additional arguments are necessary.
 
     where `NUM_THREADS` is the number of threads to utilize in parallel and `TARGET` can be either "x86" (default) or "simulator".
  
-## API Documentation
-
-In order to integrate other core or accelerator models with MosaicSim and have them interract together, we have documented an API. See Section E in the linked document: https://www.overleaf.com/project/5c87bee2b8ed496eb059acfb
-
-We also provide further documentation about the simulator and compiler within the DECADES project in the next repo:
-
-  https://github.com/PrincetonUniversity/decades_documentation
-
-## Workloads
-
-We provide further workloads, used withing the DECADES project in the next repo:
-
-  https://github.com/amanocha/DECADES_Applications
 
 ## License
 
