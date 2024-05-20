@@ -8,7 +8,6 @@ Thid pacakge depends on the following packages:
 * CLANG V11.1.0 
 * CLANG's developer package V11.1.0
 * LLVM V11.1.0 
-* LLVM's OpenMP implementation 
 
 For example, on a Ubuntu platform, the following line:
 
