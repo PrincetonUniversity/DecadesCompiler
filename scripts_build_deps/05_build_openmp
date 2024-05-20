@@ -1,0 +1,28 @@
+SCRIPT_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+source $SCRIPT_ROOT/00_config
+
+##
+## Build OpenMP
+##
+echo "Build OpenMP"
+rm -rf build_openmp_x86
+mkdir build_openmp_x86
+cd build_openmp_86
+
+set -x
+set -e
+echo ${RISCV_TOOLCHAIN_DIR}
+ls ${RISCV_TOOLCHAIN_DIR}
+
+cmake --debug -G "Unix Makefiles" \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DOPENMP_ENABLE_LIBOMPTARGET=False \
+      -DCMAKE_C_COMPILER=${LLVM_INSTALL_DIR}/bin/clang \
+      -DCMAKE_CXX_COMPILER=${LLVM_INSTALL_DIR}/bin/clang++ \
+      -DLIBOMP_OMPT_SUPPORT=TRUE \
+      -DCMAKE_INSTALL_PREFIX=${OPENMP_INSTALL_DIR} \
+      ${LLVM_SRC_DIR}/openmp
+make
+make install
+
+cd ${ROOT_DIR}

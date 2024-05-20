@@ -1,0 +1,26 @@
+IDIR = ~/GitHub/DECADES_compiler_private/libs/decoupling/include/
+CC = g++
+CFLAGS = -I $(IDIR)
+
+ODIR=obj
+LDIR=~/GitHub/DECADES_compiler_private/libs/decoupling/src/
+
+_DEPS = dec_decoupling.h
+DEPS = $(patsubst %,$(IDIR)/%,$(_DEPS))
+
+
+
+
+%.o: %.c $(DEPS)
+
+
+produce_consume_maple: produce_consume_maple.cpp shmem_decoupling.cpp
+	$(CC) -o produce_consume_maple  produce_consume_maple.o shmem_decoupling.o
+
+
+
+g++ -I <PATH TO DECADES.h FILES> produce_consume_maple.cpp <PATH_PREFIX>/dec_shmem_decoupling.cpp -c
+
+
+g++ -I ~/GitHub/DECADES_compiler_private/libs/decoupling/include produce_consume_maple.cpp ../../libs/decoupling/src/shmem_decoupling.cpp -c
+

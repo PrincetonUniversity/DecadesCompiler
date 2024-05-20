@@ -1,0 +1,16 @@
+SCRIPT_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+source $SCRIPT_ROOT/00_config
+
+# Init
+cd ${ROOT_DIR}
+echo "Initial directory: ${ROOT_DIR}"
+##
+## Installing crosstool-ng
+##
+git clone https://github.com/crosstool-ng/crosstool-ng
+cd crosstool-ng
+./bootstrap
+./configure --prefix=${CROSSTOOL_INSTALL_DIR}
+make install
+cd ${ROOT_DIR}
+

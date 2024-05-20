@@ -1,0 +1,23 @@
+SCRIPT_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+source $SCRIPT_ROOT/00_config
+
+##
+## Build LLVM
+##
+git clone https://github.com/llvm/llvm-project.git
+cd llvm-project
+git apply ${OPENMP_PATCH}
+cd ..
+rm -r ${LLVM_INSTALL_DIR}
+mkdir -p build_llvm
+cd build_llvm
+set -x
+cmake \
+    -G "Unix Makefiles" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DLLVM_ENABLE_PROJECTS="clang" \
+    -DLLVM_TARGETS_TO_BUILD="X86;RISCV" \
+    -DCMAKE_INSTALL_PREFIX=${LLVM_INSTALL_DIR} \
+    ${LLVM_SRC_DIR}/llvm
+make install
+cd ${ROOT_DIR}

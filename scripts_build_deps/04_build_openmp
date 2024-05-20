@@ -1,0 +1,32 @@
+SCRIPT_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+source $SCRIPT_ROOT/00_config
+
+##
+## Build OpenMP
+##
+echo "Build OpenMP"
+rm -rf build_openmp_riscv
+mkdir build_openmp_riscv
+cd build_openmp_riscv
+
+set -x
+set -e
+echo ${RISCV_TOOLCHAIN_DIR}
+ls ${RISCV_TOOLCHAIN_DIR}
+
+cmake --debug -G "Unix Makefiles" \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_CROSSCOMPILING=True \
+      -DOPENMP_ENABLE_LIBOMPTARGET=False \
+      -DLIBOMP_ARCH=riscv64 \
+      -DCMAKE_C_COMPILER=${LLVM_INSTALL_DIR}/bin/clang \
+      -DCMAKE_C_FLAGS="-v --target=riscv64-unknown-linux -march=rv64gc -mabi=lp64d --sysroot=${RISCV_TOOLCHAIN_DIR}/riscv64-unknown-linux-gnu/sysroot --gcc-toolchain=${RISCV_TOOLCHAIN_DIR}" \
+      -DCMAKE_CXX_COMPILER=${LLVM_INSTALL_DIR}/bin/clang++ \
+      -DCMAKE_CXX_FLAGS="-v --target=riscv64-unknown-linux -march=rv64gc -mabi=lp64d --sysroot=${RISCV_TOOLCHAIN_DIR}/riscv64-unknown-linux-gnu/sysroot --gcc-toolchain=${RISCV_TOOLCHAIN_DIR}" \
+      -DLIBOMP_OMPT_SUPPORT=TRUE \
+      -DCMAKE_INSTALL_PREFIX=${OPENMP_RISCV_INSTALL_DIR} \
+      ${LLVM_SRC_DIR}/openmp
+make
+make install
+
+cd ${ROOT_DIR}

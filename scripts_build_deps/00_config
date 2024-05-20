@@ -1,0 +1,13 @@
+SCRIPT_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+
+export ROOT_DIR=`pwd`
+
+export CROSSTOOL_INSTALL_DIR=${ROOT_DIR}/sysroot_ct
+export CROSSTOOL_CONFIG_FILE=${SCRIPT_ROOT}/crosstool-riscv64-unknown-linux-gnu
+export TOOLCHAIN_INSTALL_ROOT=${ROOT_DIR}/sysroot_riscv
+export RISCV_TOOLCHAIN_DIR=${TOOLCHAIN_INSTALL_ROOT}/riscv64-unknown-linux-gnu
+export LLVM_INSTALL_DIR=${ROOT_DIR}/sysroot_llvm
+export OPENMP_RISCV_INSTALL_DIR=${ROOT_DIR}/sysroot_openmp_riscv
+export OPENMP_INSTALL_DIR=${ROOT_DIR}/sysroot_openmp
+export LLVM_SRC_DIR=${ROOT_DIR}/llvm-project
+export OPENMP_PATCH=${SCRIPT_ROOT}/linking_error.patch

@@ -43,7 +43,7 @@ void decadesTF_relu(
 {
     int i;
 
-    for (i = 0; i < size; i++) {
+    for (i = tid; i < size; i+=num_threads) {
 	out[i] = (in[i] < 0) ? 0 : in[i];
     }
 }
@@ -60,7 +60,7 @@ void decadesTF_relugrad(
 {
     int i;
 
-    for (i = 0; i < size; i++) {
+    for (i = tid; i < size; i+=num_threads) {
 	d_in[i] = d_out[i] * (out[i] > 0 ? 1.0 : 0.0);
     }
 }
@@ -77,7 +77,7 @@ void decadesTF_prelu(
 {
 	int i;
 
-	for(i = 0; i < size; i++) {
+	for(i = tid; i < size; i+=num_threads) {
 	    out[i] = (in[i] < 0) ? (filters[i] * in[i]) : in[i];
 	}
 }
@@ -93,7 +93,7 @@ void decadesTF_prelugrad(
 {
     int i;
 
-    for (i = 0; i < size; i++) {
+    for (i = tid; i < size; i+=num_threads) {
 	d_in[i] = d_out[i] * (out[i] > 0 ? 1.0 : 0.0);
     }
 }
@@ -110,7 +110,7 @@ void decadesTF_tanh(
 {
 	int i;
 
-	for(i = 0; i < size; i++) {
+	for(i = tid; i < size; i+=num_threads) {
 	    out[i] = tanh(in[i]);
 	}
 }
@@ -126,7 +126,7 @@ void decadesTF_tanhgrad(
 {
     int i;
 
-    for (i = 0; i < size; i++) {
+    for (i = tid; i < size; i+=num_threads) {
 	d_in[i] = d_out[i] * (1 - out[i] * out[i]);
     }
 }
@@ -144,7 +144,7 @@ void decadesTF_sigmoid(
 	int i;
 	float exp_value;
 
-	for(i = 0; i < size; i++) {
+	for(i = tid; i < size; i+=num_threads) {
 	    exp_value = exp(-1.0 * in[i]);
 	    out[i] = 1.0 / (1.0 + exp_value);
 	}
@@ -160,10 +160,10 @@ void decadesTF_sigmoidgrad(
     int tid, int num_threads)
 {
     // the default for alpha_ is 1.0
-
+ 
     int i;
 
-    for (i = 0; i < size; i++) {
+    for (i = tid; i < size; i+=num_threads) {
 	d_in[i] = d_out[i] * out[i] * (1.0 - out[i]);
     }
 }
@@ -179,7 +179,7 @@ void decadesTF_elu(
 {
     int i;
 
-    for(i = 0; i < size; i++) {
+    for(i = tid; i < size; i+=num_threads) {
 	out[i] = (in[i] < 0.0) ? (alpha_ * (exp(in[i]) - 1)) : in[i];
     }
 }
@@ -197,7 +197,7 @@ void decadesTF_elugrad(
 
     int i;
 
-    for (i = 0; i < size; i++) {
+    for (i = tid; i < size; i+=num_threads) {
 	d_in[i] = d_out[i] * ((out[i] > 0.0) ? 1.0 : (alpha_ + out[i]));
     }
 }
@@ -205,31 +205,33 @@ void decadesTF_elugrad(
 // softmax
 // - software only
 // TODO. Implemented only for fully connected layers, i.e. 1D input
-__attribute__((noinline))
-extern "C"
 void decadesTF_softmax(
-    int size,
-    float *in, float *out,
-    int tid, int num_threads)
+		       int batch, int size,
+		       float *in, float *out,
+		       int tid, int num_threads)
 {
-	int i;
-	float max = in[0], sum = 0.0;
+  int i, b, base = 0;
 
-	for(i = 0; i < size; i++) {
-	    if (in[i] > max)
-		max = in[i];
-	}
-
-	for(i = 0; i < size; i++) {
-	    out[i] = exp(in[i] - max);
-	    sum += out[i];
-	}
-
-	// TODO use SDP div
-	for(i = 0; i < size; i++) {
-	    out[i] = out[i] / sum;
-	}
+  for(b = tid; b < batch; b+=num_threads) {
+    float max = in[0], sum = 0.0;
+    base = b*size;
+    for(i = base; i < size+base; i++) {
+      if (in[i] > max)
+	max = in[i];
+    }
+    
+    for(i = base; i < size+base; i++) {
+      out[i] = exp(in[i] - max);
+      sum += out[i];
+    }
+    
+    for(i = base; i < size+base; i++) {
+      out[i] = out[i] / sum;
+    }
+    base += size;
+  }
 }
+
 
 // softmax gradient
 // - software only
@@ -240,16 +242,18 @@ void decadesTF_softmaxgrad(
     float *out, float *d_out, float *d_in,
     int tid, int num_threads)
 {
+  if (tid == 0) { 
     int i, j;
     float grad = 0.0, sum = 0.0;
-	
+    
     for (i = 0; i < size; i++) {
-	for (j = 0; j < size; j++) {
-	    grad = (j == i) ? out[i] * (1.0 - out[i]) : -out[j] * out[i];
-	    sum += grad * d_out[j];
-	}
-	d_in[i] = sum;
+      for (j = 0; j < size; j++) {
+	grad = (j == i) ? out[i] * (1.0 - out[i]) : -out[j] * out[i];
+	sum += grad * d_out[j];
+      }
+      d_in[i] = sum;
     }
+  }
 }
 
 // asinh
@@ -263,7 +267,7 @@ void decadesTF_asinh(
 {
     int i;
 
-    for (i = 0; i < size; i++) {
+    for (i = tid; i < size; i+=num_threads) {
 	out[i] = asinh(in[i]);
     }
 }
@@ -280,7 +284,7 @@ void decadesTF_asinhgrad(
 {
     int i;
 
-    for (i = 0; i < size; i++) {
+    for (i = tid; i < size; i+=num_threads) {
 	d_in[i] = d_out[i] / cosh(out[i]);
     }
 }
@@ -296,7 +300,7 @@ void decadesTF_selu(
 {
     int i;
 
-    for(i = 0; i < size; i++) {
+    for(i = tid; i < size; i+=num_threads) {
 	out[i] = lambda_ * ((in[i] > 0.0) ? in[i] : (alpha_ * (exp(in[i]) - 1)));
     }
 }
@@ -314,7 +318,7 @@ void decadesTF_selugrad(
 
     int i;
 
-    for (i = 0; i < size; i++) {
+    for (i = tid; i < size; i+=num_threads) {
 	d_in[i] = d_out[i] * lambda_ * ((out[i] > 0.0) ? 1.0 : (alpha_ * exp(out[i])));
     }
 }
@@ -330,7 +334,7 @@ void decadesTF_leakyrelu(
 {
     int i;
 
-    for(i = 0; i < size; i++) {
+    for(i = tid; i < size; i+=num_threads) {
 	out[i] = (in[i] > 0.0) ? in[i] : (epsilon_ * in[i]);
     }
 }
@@ -344,11 +348,9 @@ void decadesTF_leakyrelugrad(
     float *out, float *d_out, float *d_in,
     int tid, int num_threads)
 {
-    // the default for alpha_ is 1.0
-
     int i;
 
-    for (i = 0; i < size; i++) {
+    for (i = tid; i < size; i+=num_threads) {
 	d_in[i] = d_out[i] * ((out[i] > 0.0) ? 1.0 : epsilon_);
     }
 }
@@ -379,7 +381,6 @@ void decadesTF_matmul(
 #ifdef KERNEL_ASSERTS
     assert(colsA == rowsB);
 #endif
-
     int i, j, k, b;
 
     int A_mtx_size = rowsA * colsA;
@@ -391,7 +392,7 @@ void decadesTF_matmul(
     int out_base = 0;
 
     for (b = 0; b < batch; b++) {
-	for (i = 0; i < rowsA; i++) {
+	for (i = tid; i < rowsA; i++) {
 	    for (j = 0; j < colsB; j++) {
 		out[out_base + i * colsB + j] = 0;
 		for (k = 0; k < colsA; k++) {
@@ -402,7 +403,6 @@ void decadesTF_matmul(
 	}
 
 	A_base += A_mtx_size;
-	B_base += B_mtx_size;
 	out_base += out_mtx_size;
     }
 }
@@ -417,10 +417,9 @@ void decadesTF_add(
 #ifdef KERNEL_ASSERTS
   assert(sizeA == sizeB);
 #endif
-
   int i;
 
-  for (i = 0; i < sizeA; i++) {
+  for (i = tid; i < sizeA; i+=num_threads) {
     out[i] = A[i] + B[i];
   }
 }
@@ -438,7 +437,7 @@ void decadesTF_sub(
 
   int i;
 
-  for (i = 0; i < sizeA; i++) {
+  for (i = tid; i < sizeA; i+=num_threads) {
     out[i] = A[i] - B[i];
   }
 }
@@ -456,7 +455,7 @@ void decadesTF_mul(
 
   int i;
 
-  for (i = 0; i < sizeA; i++) {
+  for (i = tid; i < sizeA; i+=num_threads) {
     out[i] = A[i] * B[i];
   }
 }
@@ -474,7 +473,7 @@ void decadesTF_div(
 
   int i;
 
-  for (i = 0; i < sizeA; i++) {
+  for (i = tid; i < sizeA; i+=num_threads) {
     out[i] = A[i] / B[i];
   }
 }
@@ -492,7 +491,7 @@ void decadesTF_scalar_add(
 
   int i;
 
-  for (i = 0; i < sizeA; i++) {
+  for (i = tid; i < sizeA; i+=num_threads) {
     out[i] = A[i] + (*B);
   }
 }
@@ -510,7 +509,7 @@ void decadesTF_scalar_sub(
 
   int i;
 
-  for (i = 0; i < sizeA; i++) {
+  for (i = tid; i < sizeA; i+=num_threads) {
     out[i] = A[i] - (*B);
   }
 }
@@ -525,10 +524,9 @@ void decadesTF_scalar_mul(
 #ifdef KERNEL_ASSERTS
   assert(sizeB == 1); 
 #endif
-
   int i;
 
-  for (i = 0; i < sizeA; i++) {
+  for (i = tid; i < sizeA; i+=num_threads) {
     out[i] = A[i] * (*B);
   }
 }
@@ -546,7 +544,7 @@ void decadesTF_scalar_div(
 
   int i;
 
-  for (i = 0; i < sizeA; i++) {
+  for (i = tid; i < sizeA; i+=num_threads) {
     out[i] = A[i] / (*B);
   }
 }
@@ -614,6 +612,7 @@ void decadesTF_maxpool(
     float *in, float *out,
     int tid, int num_threads)
 {
+  if (tid == 0) {
     unsigned i, j, k, b;
     int channel_size = in_height * in_width;
     int j_off, j_off_p1, k_in_off, k_out_off;
@@ -628,7 +627,7 @@ void decadesTF_maxpool(
 
     for (b = 0; b < batch; b++) {
 
-	for(k = 0; k < in_channels; k++) {
+	for(k = tid; k < in_channels; k+=num_threads) {
 	    k_in_off = in_base + in_chan_size * k;
 	    k_out_off = out_base + out_chan_size * k;
 
@@ -649,6 +648,7 @@ void decadesTF_maxpool(
 	in_base += in_size;
 	out_base += out_size;
     }
+  }
 }
 
 // max pooling gradient
@@ -680,7 +680,7 @@ void decadesTF_maxpoolgrad(
 
     for (b = 0; b < batch; b++) {
 
-	for(k = 0; k < in_channels; k++) {
+	for(k = tid; k < in_channels; k+=num_threads) {
 	    k_in_off = in_base + in_chan_size * k;
 	    k_out_off = out_base + out_chan_size * k;
 
@@ -728,7 +728,7 @@ void decadesTF_avgpool(
     unsigned i, j, k, b;
     int channel_size = in_height * in_width;
     int j_off, j_off_p1, k_in_off, k_out_off;
-
+    
     int in_chan_size = in_height * in_width;
     int out_chan_size = in_height/2 * in_width/2; // TODO better
     int in_size = in_chan_size * in_channels;
@@ -739,7 +739,7 @@ void decadesTF_avgpool(
 
     for (b = 0; b < batch; b++) {
 
-	for(k = 0; k < in_channels; k++) {
+	for(k = tid; k < in_channels; k+=num_threads) {
 	    k_in_off = in_base + in_chan_size * k;
 	    k_out_off = out_base + out_chan_size * k;
 
@@ -776,6 +776,7 @@ void decadesTF_avgpoolgrad(
     float *d_out, float *d_in,
     int tid, int num_threads)
 {
+  if (tid > 0) {
     unsigned i, j, k, b, m;
     int channel_size = in_height * in_width;
     int j_off, j_off_p1, k_in_off, k_out_off;
@@ -790,7 +791,7 @@ void decadesTF_avgpoolgrad(
 
     for (b = 0; b < batch; b++) {
 
-	for(k = 0; k < in_channels; k++) {
+	for(k = tid; k < in_channels; k+=num_threads) {
 	    k_in_off = in_base + in_chan_size * k;
 	    k_out_off = out_base + out_chan_size * k;
 
@@ -817,6 +818,7 @@ void decadesTF_avgpoolgrad(
 	in_base += in_size;
 	out_base += out_size;
     }
+  }
 }
 
 ////////////////////////////
@@ -834,16 +836,15 @@ void decadesTF_avgpoolgrad(
 /*     - for fused accelerator execution use conv2d_layer or dense_layer */
 __attribute__((noinline))
 extern "C"
-void decadesTF_bias_add(
-    int size_channel, int size_bias,
-    float *in, float *biases, float *out,
-    int tid, int num_threads)
+void decadesTF_bias_add(int batch, int size_channel,
+			float *in, float *biases, float *out,
+			int tid, int num_threads)
 {
-    unsigned i, j;
-
-	for(i = 0; i < size_bias; i++)
-	    for(j = 0; j < size_channel; j++)
-		out[i * size_channel + j] = in[i * size_channel + j] + biases[i];
+  unsigned i, j;
+  
+  for(i = tid; i < batch; i+=num_threads)
+    for(j = 0; j < size_channel; j++)
+      out[i * size_channel + j] = in[i * size_channel + j] + biases[j];
 }
 
 // bias add grad
@@ -902,7 +903,7 @@ void decadesTF_lrn(
     float sqr_sum;
     int iter = size / (depth_radius * 2);
 
-    for (i = 0; i < iter; i++) {
+    for (i = tid; i < iter; i+=num_threads) {
 	sqr_sum = 0.0;
 	i_off = i * depth_radius * 2;
 
@@ -946,7 +947,6 @@ void decadesTF_conv2d(
     // - filter_height = 3, filter_width = 3
     // - vertical_conv_stride = 1, horizontal_conv_stride = 1
     // - batch = 1
-
     unsigned i, j, k, h, b;
     unsigned in_base, out_base;
     unsigned height_size = padding ? (in_height-2) : (in_height);
@@ -969,7 +969,7 @@ void decadesTF_conv2d(
     out_base = 0;
 
     for (b = 0; b < batch; b++) { // for each batch element
-	for(h = 0; h < out_channels; h++ ) { // for each filter
+	for(h = tid; h < out_channels; h+=num_threads) { // for each filter
 	    for(k = 0; k < in_channels; k++) { // for each in channel
 
 		// pad if necessary
@@ -982,7 +982,7 @@ void decadesTF_conv2d(
 		// convolution of one filter with one 2D matrix
 		for (i = 0; i < height_size; i++) {
 		    for (j = 0; j < width_size; j++) {
-			sum = zeropad[i    ][j    ] * filters[h*filter_size + 2 * 3 + 2] +
+		      sum = zeropad[i    ][j    ] * filters[h*filter_size + 2 * 3 + 2] +
 			    zeropad[i    ][j + 1] * filters[h*filter_size + 2 * 3 + 1] +
 			    zeropad[i    ][j + 2] * filters[h*filter_size + 2 * 3 + 0] +
 			    zeropad[i + 1][j    ] * filters[h*filter_size + 1 * 3 + 2] +
@@ -1018,7 +1018,7 @@ void decadesTF_conv2d_layer(
     float *in, float *filters, float *bias, /* float *prelu_filters,*/ float *out,
     int tid, int num_threads)
 {
-    // Fusing possibilities:
+  // Fusing possibilities:
     // - conv2d + bias_add + activation + (optional) pooling + (optional) lrn
     unsigned height_padded = zero_pad ? (in_height-2) : (in_height);
     unsigned width_padded = zero_pad ? (in_width-2) : (in_width);
@@ -1050,14 +1050,14 @@ void decadesTF_conv2d_layer(
     }
 
     /* // pooling */
-    /* if (pooling) { */
-    /* 	if (pooling_type == 0) // max_pool */
-    /* 	    decadesTF_maxpool(batch, height_padded, width_padded, out_channels, pool_height, */
-    /* 			       pool_width, out, out, tid, num_threads); */
-    /* 	else //(pooling_type == 1) -> avg_pool */
-    /* 	    decadesTF_avgpool(batch, height_padded, width_padded, out_channels, pool_height, */
-    /* 			       pool_width, out, out, tid, num_threads); */
-    /* } */
+    if (pooling) {
+    	if (pooling_type == 0) // max_pool
+    	    decadesTF_maxpool(batch, height_padded, width_padded, out_channels, pool_height,
+    			       pool_width, out, out, tid, num_threads);
+    	else //(pooling_type == 1) -> avg_pool
+    	    decadesTF_avgpool(batch, height_padded, width_padded, out_channels, pool_height,
+    			       pool_width, out, out, tid, num_threads);
+    }
 
     /* // lrn */
     /* if (lrn) { */
@@ -1081,7 +1081,8 @@ void decadesTF_conv2dbackpropinput(
     float *filters, float *d_out, float *d_in,
     int tid, int num_threads)
 {
-    size_t idx, idx_d_in, idx_d_out, idx_filters;
+  if (tid == 0) { 
+  size_t idx, idx_d_in, idx_d_out, idx_filters;
 
     // fixed: assuming conv_stride = 1
     unsigned padded_height = padding ? (out_height + 2) : out_height;
@@ -1125,6 +1126,7 @@ void decadesTF_conv2dbackpropinput(
 	    idx_d_in += in_channel_size;
 	}
     }
+  }
 }
 
 // conv2d backprop filter
@@ -1143,6 +1145,7 @@ void decadesTF_conv2dbackpropfilter(
     float *in, float *d_out, float *d_filters,
     int tid, int num_threads)
 {
+  if (tid > 0) {
     size_t idx, idx_in, idx_d_out, idx_d_filters;
 
     // fixed: assuming conv_stride = 1
@@ -1184,6 +1187,8 @@ void decadesTF_conv2dbackpropfilter(
 	    idx_in += in_channel_size;
 	}
     }
+  }
+#pragma omp barrier
 }
 
 // dense
@@ -1201,7 +1206,7 @@ void decadesTF_dense(
     float sum;
     unsigned in_base = 0, out_base = 0;
 
-    for (b = 0; b < batch; b++) {
+    for (b = tid; b < batch; b++) {
 	for(h = 0; h < out_channels; h++){ // for each output channel
 	    sum = 0.0;
 	    for(k = 0; k < in_channels; k++){ // for each input channel
@@ -1216,41 +1221,31 @@ void decadesTF_dense(
 
 // dense_layer
 // - hardware only
-// TODO for now implementation considers batch = 1
 __attribute__((noinline))
 extern "C"
 void decadesTF_dense_layer(
     volatile int batch, volatile int in_channels, volatile int out_channels,
-    volatile bool bias_add, 
     volatile bool activation, volatile int activation_type,
-    float *in, float *filters, float *bias, /*float *prelu_filters,*/ float *out,
-    // software-only parameters
+    float *in, float *filters, float *out,
     int tid, int num_threads)
 {
-    int out_size = out_channels;
-
-    // matmul
-    decadesTF_dense(batch, in_channels, out_channels, in, filters, out,
-		    tid, num_threads);
-
-    // bias add
-    if (bias_add) {
-	decadesTF_add(out_size, out_size, out, bias, out, tid, num_threads);
-    }
-
-    // activation
-    if (activation) {
-	if (activation_type == 0) // relu
-	    decadesTF_relu(out_size, out, out, tid, num_threads);
-	//if (activation_type == 1) // prelu
-	//    decadesTF_prelu(out_size, out, prelu_filters, out, tid, num_threads);
-	if (activation_type == 1) // tanh
-	    decadesTF_tanh(out_size, out, out, tid, num_threads);
-	if (activation_type == 2) // sigmoid
-	    decadesTF_sigmoid(out_size, out, out, tid, num_threads);
-	/* if (activation_type == 4) // batch_norm */
-	/*     decadesTF_batch_norm(out_size, out, out, tid, num_threads); */
-    }
+  int out_size = batch*out_channels;
+  // matmul
+  decadesTF_dense(batch, in_channels, out_channels, in, filters, out,
+		  tid, num_threads);
+  
+  // activation
+  if (activation) {
+    if (activation_type == 0) // relu
+      decadesTF_relu(out_size, out, out, tid, num_threads);
+    if (activation_type == 1) // tanh
+      decadesTF_tanh(out_size, out, out, tid, num_threads);
+    if (activation_type == 2) // sigmoid
+      decadesTF_sigmoid(out_size, out, out, tid, num_threads);
+    
+    /* if (activation_type == 4) // batch_norm */
+    /*     decadesTF_batch_norm(out_size, out, out, tid, num_threads); */
+  }
 }
 
 ////////////////////////////

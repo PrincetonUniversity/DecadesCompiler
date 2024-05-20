@@ -1,7 +1,2 @@
-cmake_minimum_required(VERSION 3.2)
-
-add_subdirectory(DecoupleServer)
-add_subdirectory(KernelProfiler)
-add_subdirectory(DECLib)
-
-
+configure_file(DECpp.py ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/DEC++ @ONLY)
+configure_file(DECLib/DECADES_TensorFlow.h ${DEC_INCLUDE_OUTPUT_DIRECTORY})

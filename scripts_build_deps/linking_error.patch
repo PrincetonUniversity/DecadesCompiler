@@ -1,0 +1,14 @@
+diff --git a/openmp/runtime/src/CMakeLists.txt b/openmp/runtime/src/CMakeLists.txt
+index 1211441876e..cb609c175a2 100644
+--- a/openmp/runtime/src/CMakeLists.txt
++++ b/openmp/runtime/src/CMakeLists.txt
+@@ -168,7 +168,8 @@ endif()
+ 
+ # Linking command will include libraries in LIBOMP_CONFIGURED_LIBFLAGS
+ libomp_get_libflags(LIBOMP_CONFIGURED_LIBFLAGS)
+-target_link_libraries(omp ${LIBOMP_CONFIGURED_LIBFLAGS} ${CMAKE_DL_LIBS})
++target_link_libraries(omp ${LIBOMP_CONFIGURED_LIBFLAGS} ${CMAKE_DL_LIBS}
++  "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/exports_so.txt")
+ 
+ # Create *.inc before compiling any sources
+ # objects depend on : .inc files

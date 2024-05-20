@@ -1,0 +1,18 @@
+SCRIPT_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+source $SCRIPT_ROOT/00_config
+
+##
+## Build gcc toolchain and riscv system root
+##
+set -x
+TMP_DIR=${ROOT_DIR}/tmp_dir
+mkdir -p ${TMP_DIR}
+cd ${TMP_DIR}
+cp ${CROSSTOOL_CONFIG_FILE} ${TMP_DIR}/.config
+# The toolchain will be installed in ${CT_PREFIX}/riscv64-unknown-linux-gnu
+export CT_PREFIX=${TOOLCHAIN_INSTALL_ROOT}
+export WORKSPACE=${TMP_DIR}
+export CT_BUILD_DIR=${TMP_DIR}
+${CROSSTOOL_INSTALL_DIR}/bin/ct-ng build
+#cd ${ROOT_DIR}
+

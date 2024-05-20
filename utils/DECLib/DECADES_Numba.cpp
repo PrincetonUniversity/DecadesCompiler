@@ -1,4 +1,4 @@
-#include "omp.h"
+include "omp.h"
 
 extern "C"
 void DECADES_BARRIER() {

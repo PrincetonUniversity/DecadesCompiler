@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python3 
 import os, sys, subprocess
 import pdb
 from numba import types, prange
@@ -380,9 +380,9 @@ def native_lowering_stage(targetctx, library, interp, typemap, restype,
             if FIRST_DEC_RUN:
                 ll.load_library_permanently(os.path.join(DEC_options["pythia_home"],"tools", "tracer.so"))
                 ll.load_library_permanently(DEC_options["openmp_lib"])
-                ll.load_library_permanently(os.path.join(BUILD_ROOT, "./utils/DecoupleServer/libproduce_consume-shared.so"))
+                ll.load_library_permanently(os.path.join("@PROJCET_BINARY_DIR@", "./utils/DecoupleServer/libproduce_consume-shared.so"))
                 #pdb.set_trace()
-                ll.load_library_permanently(os.path.join(BUILD_ROOT, "./utils/DECLib/libDECADES-numba.so"))
+                ll.load_library_permanently(os.path.join("@PROJECT_BINARY_DIR@", "./utils/DECLib/libDECADES-numba.so"))
 
             pipe_line_print("")
             pipe_line_print("-----")
